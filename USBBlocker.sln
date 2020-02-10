@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.645
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "USBBlocker", "USBBlocker\USBBlocker.csproj", "{652F4CFB-428C-4F07-ABB3-3E0C2FCE3483}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{652F4CFB-428C-4F07-ABB3-3E0C2FCE3483}.Debug|Any CPU.ActiveCfg = Release|Any CPU
+		{652F4CFB-428C-4F07-ABB3-3E0C2FCE3483}.Debug|Any CPU.Build.0 = Release|Any CPU
+		{652F4CFB-428C-4F07-ABB3-3E0C2FCE3483}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{652F4CFB-428C-4F07-ABB3-3E0C2FCE3483}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C33A9832-0B17-4025-A3FB-6C259BC3DADC}
+	EndGlobalSection
+EndGlobal
