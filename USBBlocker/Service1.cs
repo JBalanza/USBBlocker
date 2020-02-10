@@ -20,6 +20,8 @@ namespace USBBlocker
         Timer timer = new Timer();
         ManagementEventWatcher insertWatcher = new ManagementEventWatcher();
         EventLog eventos = new EventLog();
+        Boolean TrainMode = false;
+        string path = @"C:\ProgramData\USBSignatures.txt";
 
         public Service1()
         {
@@ -124,11 +126,15 @@ namespace USBBlocker
             //this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se ha detectado un nuevo USB: ", props),EventLogEntryType.Information);
 
             List<string> devices_plugged = new List<string>();
-            devices_plugged.AddRange(list_properties("SELECT * FROM Win32_Keyboard", "Win32_Keyboard"));
-            devices_plugged.AddRange(list_properties("SELECT * FROM CIM_USBDevice", "CIM_USBDevice"));
-            devices_plugged.AddRange(list_properties("SELECT * FROM Win32_USBHub", "Win32_USBHub"));
-            devices_plugged.AddRange(list_properties("SELECT * FROM Win32_MemoryDevice", "Win32_MemoryDevice"));
-            //devices_plugged.AddRange(list_properties("SELECT * FROM Win32_USBControllerDevice", "Win32_USBControllerDevice"));
+            try
+            {
+                devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM Win32_Keyboard", "Win32_Keyboard")).ToList();
+                devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM CIM_USBDevice", "CIM_USBDevice")).ToList();
+                devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM Win32_USBHub", "Win32_USBHub")).ToList();
+                devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM Win32_MemoryDevice", "Win32_MemoryDevice")).ToList();
+                //devices_plugged = devices_plugged.AddRange(list_properties("SELECT * FROM Win32_USBControllerDevice", "Win32_USBControllerDevice"));
+            }
+            catch (Exception) { }
 
             Check_devices(devices_plugged);
         }
@@ -152,7 +158,7 @@ namespace USBBlocker
         private void Check_devices(List<string> devices_ID)
         {
             string[] Recognised_devices = Accepted_Devices();
-            foreach (var devID in devices_ID)
+            foreach (string devID in devices_ID)
             {
                 // BashBunny found
                 if (devID.Contains("F000"))
@@ -164,8 +170,21 @@ namespace USBBlocker
                 //Now is a Whitelist
                 else if (!Recognised_devices.Contains(devID))
                 {
-                    this.EventLog.WriteEntry(String.Concat("[USBBlocker]  Bloqueando, se ha introducido un nuevo dispositivo ", devID), EventLogEntryType.Warning);
-                    BlockComputer();
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se ha detectado un dispositivo no reconocido ", devID), EventLogEntryType.Information);
+                    if (TrainMode)
+                    {
+                        this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se ha añadido un nuevo dispositivo a las firmas reconocidas", devID), EventLogEntryType.Warning);
+                        // true as secon arg enables concat instead of overwrite.
+                        using (StreamWriter sw = new StreamWriter(path,true))
+                        {
+                            sw.WriteLine(devID);
+                        }
+                    }
+                    else
+                    { 
+                        this.EventLog.WriteEntry(String.Concat("[USBBlocker]  Bloqueando, se ha introducido un nuevo dispositivo ", devID), EventLogEntryType.Warning);
+                        BlockComputer();
+                    }
                 }
             }
         }
@@ -177,12 +196,18 @@ namespace USBBlocker
             string[] Recognised_devices = { @"USB\VID_10D5&PID_000D&MI_00\7&2F53004F&0&0000", @"ACPI\LEN0071\4&39D7568D&0", @"USB\VID_17EF&PID_608C&MI_00\7&8AE0656&0&0000", @"USB\ROOT_HUB30\4&318E91B5&1&0", @"USB\VID_04CA&PID_7058\5&2AFD7BB9&0&8", @"USB\VID_2109&PID_2811\5&2AFD7BB9&0&4", @"USB\VID_10D5&PID_000D\6&82E9074&0&3", @"USB\VID_05E3&PID_0608\5&2AFD7BB9&0&3", @"USB\VID_2109&PID_8110\5&2AFD7BB9&0&16", @"USB\VID_17EF&PID_608C\6&82E9074&0&1" };
             List<string> Recognised_devices_list = new List<string>(Recognised_devices);
 
-            string path = @"C:\ProgramData\USBSignatures.txt";
             List<string> lines_list = new List<string>();
 
             if (!File.Exists(path))
             {
-                try { File.Create(path);}
+                try
+                {
+                    using (StreamWriter sw = new StreamWriter(path))
+                    {
+                        sw.WriteLine("Train_mode=True");
+                    }
+                    this.EventLog.WriteEntry(String.Concat("Se ha generado el fichero ", path), EventLogEntryType.Information);
+                }
                 catch (Exception e)
                 {
                     this.EventLog.WriteEntry(String.Concat("No se ha podido crear el fichero", path, " por ",e.ToString()), EventLogEntryType.Information);
@@ -195,9 +220,18 @@ namespace USBBlocker
                     string[] lines = File.ReadAllLines(path);
                     lines_list = new List<string>(lines);
                     this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se han leido algunas firmas del fichero: ", string.Join(";;", lines_list)), EventLogEntryType.Information);
-   
+
+                    //check if train mode
+                    if (lines_list.Contains("Train_mode=True"))
+                    {
+                        TrainMode = true;
+                    }
+                    else
+                    {
+                        TrainMode = false;
+                    }
                 }
-                catch (ArgumentNullException an) { }
+                catch (ArgumentNullException) { }
             }
 
             try { Recognised_devices_list = Recognised_devices_list.Union(lines_list).ToList(); } catch (ArgumentNullException) { }
