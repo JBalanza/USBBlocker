@@ -1,4 +1,8 @@
-# USBBlocker
+# USB Blocker
+
+## Inspiration
+
+A secure way to defend against rubber duckyes, Bash bunnys and other similar HID emulators.
 
 ## Compilation
 
