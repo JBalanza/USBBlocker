@@ -20,8 +20,13 @@ namespace USBBlocker
         Timer timer = new Timer();
         ManagementEventWatcher insertWatcher = new ManagementEventWatcher();
         EventLog eventos = new EventLog();
-        Boolean TrainMode = false;
-        string path = @"C:\ProgramData\USBSignatures.txt";
+        Boolean TrainMode = true;
+        Boolean Block = true;
+        string path = @"C:\ProgramData\USBSignatures.txt"; //default
+        string logname = "Aplicación";
+        int maxBlocks = 4;
+        int min_secs = 2;
+        long epoch_old;
 
         public Service1()
         {
@@ -30,19 +35,27 @@ namespace USBBlocker
 
         protected override void OnStart(string[] args)
         {
-            //timer.Elapsed += new ElapsedEventHandler(OnElapsedTime);
-            //timer.Interval = 1000; //number in milisecinds  
-            //timer.Enabled = true;
-            //Check if new USB has beed added
-
-            //Event type=3 is removed
+            //Produces an event whenever a USB device is attached
+            //Event type=2 device is attached
+            //Event type=3 device is removed
             WqlEventQuery insertQuery = new WqlEventQuery("SELECT * FROM Win32_DeviceChangeEvent WHERE EventType = 2");
             insertWatcher.Query = insertQuery;
             insertWatcher.EventArrived += new EventArrivedEventHandler(Monitorize);
             insertWatcher.Start();
 
+            //set first epoch
+            epoch_old = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
             //Creates the eventslog
-            eventos.Log = "Aplicación";
+            //Change to 'Application' if the OS language is EN. 
+            if (!EventLog.SourceExists(logname))
+            {
+                eventos.Log = logname; 
+            }
+            else
+            {
+                eventos.Log = "Application";
+            }
             ((ISupportInitialize)(this.EventLog)).BeginInit();
             if (!EventLog.SourceExists(this.EventLog.Source))
             {
@@ -50,12 +63,12 @@ namespace USBBlocker
             }
             ((ISupportInitialize)(this.EventLog)).EndInit();
 
-            this.EventLog.WriteEntry("El Servicio USBBlock ha comenzado", EventLogEntryType.Information);
+            this.EventLog.WriteEntry("[USBBlocker] service has started", EventLogEntryType.Information);
         }
 
         protected override void OnStop()
         {
-            this.EventLog.WriteEntry("El Servicio USBBlock ha Finalizado", EventLogEntryType.Information);
+            this.EventLog.WriteEntry("[USBBlocker] service has ended", EventLogEntryType.Information);
         }
 
         [DllImport("wtsapi32.dll", SetLastError = true)]
@@ -117,13 +130,15 @@ namespace USBBlocker
         {
             // Get time when new USB is plugged in
             ManagementBaseObject instance = (ManagementBaseObject)e.NewEvent;
-            this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se ha detectado un nuevo USB: TIME_CREATED= ", instance.GetPropertyValue("TIME_CREATED")), EventLogEntryType.Information);
+            this.EventLog.WriteEntry(String.Concat("[USBBlocker] New USB device has been detected: TIME_CREATED= ", instance.GetPropertyValue("TIME_CREATED")), EventLogEntryType.Information);
+            /*
             String props = "";
             foreach (var property in instance.Properties)
             {
                 props = String.Concat(props, property.Name, " = ", property.Value, " ;");
             }
-            //this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se ha detectado un nuevo USB: ", props),EventLogEntryType.Information);
+            this.EventLog.WriteEntry(String.Concat("[USBBlocker] New USB device has been detected: ", props),EventLogEntryType.Information);
+            */
 
             List<string> devices_plugged = new List<string>();
             try
@@ -132,10 +147,8 @@ namespace USBBlocker
                 devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM CIM_USBDevice", "CIM_USBDevice")).ToList();
                 devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM Win32_USBHub", "Win32_USBHub")).ToList();
                 devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM Win32_MemoryDevice", "Win32_MemoryDevice")).ToList();
-                //devices_plugged = devices_plugged.AddRange(list_properties("SELECT * FROM Win32_USBControllerDevice", "Win32_USBControllerDevice"));
-            }
-            catch (Exception) { }
-
+            } catch (Exception) { }
+        
             Check_devices(devices_plugged);
         }
 
@@ -151,7 +164,7 @@ namespace USBBlocker
                 devices_ID.Add(deviceID);
                 devices_ID_string = String.Concat(devices_ID_string, deviceID, ";;");
             }
-            this.EventLog.WriteEntry(String.Concat("[USBBlocker] Informacion del dispositivo ", device, " : ", "DEVICES ID=", devices_ID_string), EventLogEntryType.Information);
+            this.EventLog.WriteEntry(String.Concat("[USBBlocker] Device information ", device, " : ", "DEVICES ID=", devices_ID_string), EventLogEntryType.Information);
             return devices_ID;
         }
 
@@ -163,26 +176,27 @@ namespace USBBlocker
                 // BashBunny found
                 if (devID.Contains("F000"))
                 {
-                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] PC Bloqueado, causa: BashBunny. Found device ID ", devID), EventLogEntryType.Warning);
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] System blocked, cause: BashBunny. Found device ID: ", devID), EventLogEntryType.Warning);
                     BlockComputer();
                 }
 
-                //Now is a Whitelist
-                else if (!Recognised_devices.Contains(devID))
+                //Parses the Whitelist. Also dont block if maximun_blocks exceeded
+                else if (!Recognised_devices.Contains(devID) && Block)
                 {
-                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se ha detectado un dispositivo no reconocido ", devID), EventLogEntryType.Information);
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] unrecognized devide detected: ", devID), EventLogEntryType.Information);
                     if (TrainMode)
                     {
-                        this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se ha añadido un nuevo dispositivo a las firmas reconocidas", devID), EventLogEntryType.Warning);
+                        this.EventLog.WriteEntry(String.Concat("[USBBlocker] A new device signature has been added: ", devID), EventLogEntryType.Warning);
                         // true as secon arg enables concat instead of overwrite.
-                        using (StreamWriter sw = new StreamWriter(path,true))
+                        using (StreamWriter sw = new StreamWriter(path, true))
                         {
                             sw.WriteLine(devID);
                         }
                     }
                     else
-                    { 
-                        this.EventLog.WriteEntry(String.Concat("[USBBlocker]  Bloqueando, se ha introducido un nuevo dispositivo ", devID), EventLogEntryType.Warning);
+                    {
+                        this.EventLog.WriteEntry(String.Concat("[USBBlocker]  Blocking ... a new USB device has been plugged in ", devID), EventLogEntryType.Warning);
+                        epoch_old = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                         BlockComputer();
                     }
                 }
@@ -192,26 +206,17 @@ namespace USBBlocker
         //Devices can be added manually under "path" var file
         private string[] Accepted_Devices()
         {
-            //default recognized ones. "@" before string is for non escape the backslash
+            //my default recognized ones. "@" before string is for non escape the backslash. You should subssitute yours instead
             string[] Recognised_devices = { @"USB\VID_10D5&PID_000D&MI_00\7&2F53004F&0&0000", @"ACPI\LEN0071\4&39D7568D&0", @"USB\VID_17EF&PID_608C&MI_00\7&8AE0656&0&0000", @"USB\ROOT_HUB30\4&318E91B5&1&0", @"USB\VID_04CA&PID_7058\5&2AFD7BB9&0&8", @"USB\VID_2109&PID_2811\5&2AFD7BB9&0&4", @"USB\VID_10D5&PID_000D\6&82E9074&0&3", @"USB\VID_05E3&PID_0608\5&2AFD7BB9&0&3", @"USB\VID_2109&PID_8110\5&2AFD7BB9&0&16", @"USB\VID_17EF&PID_608C\6&82E9074&0&1" };
             List<string> Recognised_devices_list = new List<string>(Recognised_devices);
 
             List<string> lines_list = new List<string>();
 
+            //reset if changed from last execution
+            Block = true;
             if (!File.Exists(path))
             {
-                try
-                {
-                    using (StreamWriter sw = new StreamWriter(path))
-                    {
-                        sw.WriteLine("Train_mode=True");
-                    }
-                    this.EventLog.WriteEntry(String.Concat("Se ha generado el fichero ", path), EventLogEntryType.Information);
-                }
-                catch (Exception e)
-                {
-                    this.EventLog.WriteEntry(String.Concat("No se ha podido crear el fichero", path, " por ",e.ToString()), EventLogEntryType.Information);
-                }
+                initialize_file(path);
             }
             else
             {
@@ -219,7 +224,7 @@ namespace USBBlocker
                 {
                     string[] lines = File.ReadAllLines(path);
                     lines_list = new List<string>(lines);
-                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] Se han leido algunas firmas del fichero: ", string.Join(";;", lines_list)), EventLogEntryType.Information);
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] Signature file readed: ", string.Join(";;", lines_list)), EventLogEntryType.Information);
 
                     //check if train mode
                     if (lines_list.Contains("Train_mode=True"))
@@ -230,11 +235,44 @@ namespace USBBlocker
                     {
                         TrainMode = false;
                     }
+                    //check if exceeded maximun blocked times
+                    string full_string = lines_list.First(s => s.Contains("Number_blocks"));
+                    int n_blocks_i = lines_list.IndexOf(full_string);
+                    if (n_blocks_i >= 0)
+                    {
+                        char[] delChar = {'='};
+                        int n_blocks = int.Parse(lines_list[n_blocks_i].Split(delChar)[1]);
+                        if (n_blocks >= maxBlocks)
+                        {
+                            Block = false; //don't block the computer
+                            this.EventLog.WriteEntry("[USBBlocker] Not blocking because maximun_block numer exceeded", EventLogEntryType.Information);
+
+                        }
+                        else
+                        {
+                            //increment the Number_blocks variable and save it
+                            //to detect false positives because it receives more events than plugged in devices
+                            long epoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                            long secs_diff = epoch - epoch_old;
+                            this.EventLog.WriteEntry(String.Concat("SECS_DIFF: ", secs_diff.ToString()), EventLogEntryType.Information);
+
+                            //difference between an event and another has to be 2sec min to increment Number_blocks
+                            if ( secs_diff > min_secs)
+                            {
+                                lines_list[n_blocks_i] = string.Format("Number_blocks={0}", n_blocks + 1);
+                                File.WriteAllLines(path, lines_list);
+                                epoch_old = epoch;
+                            }
+                        }
+                    }
                 }
-                catch (ArgumentNullException) { }
+                catch (Exception e)
+                {
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] An error occurred while reading the signature file: ", e.ToString()),  EventLogEntryType.Error);
+                }
             }
 
-            try { Recognised_devices_list = Recognised_devices_list.Union(lines_list).ToList(); } catch (ArgumentNullException) { }
+                try { Recognised_devices_list = Recognised_devices_list.Union(lines_list).ToList(); } catch (ArgumentNullException) { }
 
             return Recognised_devices_list.ToArray();
         }
@@ -257,6 +295,22 @@ namespace USBBlocker
                 currentSession += dataSize;
             }
             WTSFreeMemory(ppSessionInfo);
+        }
+        private void initialize_file(string path)
+        {
+            try
+            {
+                using (StreamWriter sw = new StreamWriter(path))
+                {
+                    sw.WriteLine("Train_mode=True");
+                    sw.WriteLine("Number_blocks=0");
+                }
+                this.EventLog.WriteEntry(String.Concat("The file has been generated ", path), EventLogEntryType.Information);
+            }
+            catch (Exception e)
+            {
+                this.EventLog.WriteEntry(String.Concat("The file cannot be generated", path, " because ", e.ToString()), EventLogEntryType.Information);
+            }
         }
     }
 }
