@@ -22,11 +22,15 @@ namespace USBBlocker
         EventLog eventos = new EventLog();
         Boolean TrainMode = true;
         Boolean Block = true;
+        long epoch_old;
+
+        //Configurable variables
+        //string[] Recognised_devices_main = { @"USB\VID_10D5&PID_000D&MI_00\7&2F53004F&0&0000", @"ACPI\LEN0071\4&39D7568D&0", @"USB\VID_17EF&PID_608C&MI_00\7&8AE0656&0&0000", @"USB\ROOT_HUB30\4&318E91B5&1&0", @"USB\VID_04CA&PID_7058\5&2AFD7BB9&0&8", @"USB\VID_2109&PID_2811\5&2AFD7BB9&0&4", @"USB\VID_10D5&PID_000D\6&82E9074&0&3", @"USB\VID_05E3&PID_0608\5&2AFD7BB9&0&3", @"USB\VID_2109&PID_8110\5&2AFD7BB9&0&16", @"USB\VID_17EF&PID_608C\6&82E9074&0&1" };
+        string[] Recognised_devices_main = { };
         string path = @"C:\ProgramData\USBSignatures.txt"; //default
         string logname = "Aplicación";
-        int maxBlocks = 4;
+        int maxBlocks = 3;
         int min_secs = 2;
-        long epoch_old;
 
         public Service1()
         {
@@ -43,7 +47,7 @@ namespace USBBlocker
             insertWatcher.EventArrived += new EventArrivedEventHandler(Monitorize);
             insertWatcher.Start();
 
-            //set first epoch
+            //initialize variables
             epoch_old = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             //Creates the eventslog
@@ -196,7 +200,6 @@ namespace USBBlocker
                     else
                     {
                         this.EventLog.WriteEntry(String.Concat("[USBBlocker]  Blocking ... a new USB device has been plugged in ", devID), EventLogEntryType.Warning);
-                        epoch_old = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                         BlockComputer();
                     }
                 }
@@ -207,8 +210,7 @@ namespace USBBlocker
         private string[] Accepted_Devices()
         {
             //my default recognized ones. "@" before string is for non escape the backslash. You should subssitute yours instead
-            string[] Recognised_devices = { @"USB\VID_10D5&PID_000D&MI_00\7&2F53004F&0&0000", @"ACPI\LEN0071\4&39D7568D&0", @"USB\VID_17EF&PID_608C&MI_00\7&8AE0656&0&0000", @"USB\ROOT_HUB30\4&318E91B5&1&0", @"USB\VID_04CA&PID_7058\5&2AFD7BB9&0&8", @"USB\VID_2109&PID_2811\5&2AFD7BB9&0&4", @"USB\VID_10D5&PID_000D\6&82E9074&0&3", @"USB\VID_05E3&PID_0608\5&2AFD7BB9&0&3", @"USB\VID_2109&PID_8110\5&2AFD7BB9&0&16", @"USB\VID_17EF&PID_608C\6&82E9074&0&1" };
-            List<string> Recognised_devices_list = new List<string>(Recognised_devices);
+            List<string> Recognised_devices_list = new List<string>(Recognised_devices_main);
 
             List<string> lines_list = new List<string>();
 
@@ -216,7 +218,7 @@ namespace USBBlocker
             Block = true;
             if (!File.Exists(path))
             {
-                initialize_file(path);
+                Initialize_File(path);
             }
             else
             {
@@ -235,36 +237,7 @@ namespace USBBlocker
                     {
                         TrainMode = false;
                     }
-                    //check if exceeded maximun blocked times
-                    string full_string = lines_list.First(s => s.Contains("Number_blocks"));
-                    int n_blocks_i = lines_list.IndexOf(full_string);
-                    if (n_blocks_i >= 0)
-                    {
-                        char[] delChar = {'='};
-                        int n_blocks = int.Parse(lines_list[n_blocks_i].Split(delChar)[1]);
-                        if (n_blocks >= maxBlocks)
-                        {
-                            Block = false; //don't block the computer
-                            this.EventLog.WriteEntry("[USBBlocker] Not blocking because maximun_block numer exceeded", EventLogEntryType.Information);
-
-                        }
-                        else
-                        {
-                            //increment the Number_blocks variable and save it
-                            //to detect false positives because it receives more events than plugged in devices
-                            long epoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                            long secs_diff = epoch - epoch_old;
-                            this.EventLog.WriteEntry(String.Concat("SECS_DIFF: ", secs_diff.ToString()), EventLogEntryType.Information);
-
-                            //difference between an event and another has to be 2sec min to increment Number_blocks
-                            if ( secs_diff > min_secs)
-                            {
-                                lines_list[n_blocks_i] = string.Format("Number_blocks={0}", n_blocks + 1);
-                                File.WriteAllLines(path, lines_list);
-                                epoch_old = epoch;
-                            }
-                        }
-                    }
+                    Block = check_num_block();
                 }
                 catch (Exception e)
                 {
@@ -277,8 +250,32 @@ namespace USBBlocker
             return Recognised_devices_list.ToArray();
         }
 
+        private bool check_num_block()
+        {
+            Boolean Block = true;
+            string[] lines = File.ReadAllLines(path);
+            List<string> lines_list = new List<string>(lines);
+            string full_string = lines_list.First(s => s.Contains("Number_blocks"));
+            int n_blocks_i = lines_list.IndexOf(full_string);
+            if (n_blocks_i >= 0)
+            {
+                char[] delChar = { '=' };
+                int n_blocks = int.Parse(lines_list[n_blocks_i].Split(delChar)[1]);
+                if (n_blocks >= maxBlocks)
+                {
+                    Block = false; //don't block the computer
+                    this.EventLog.WriteEntry("[USBBlocker] Not blocking because maximun_block number exceeded", EventLogEntryType.Information);
+                }
+            }
+            return Block;
+        }
+
         private void BlockComputer()
         {
+            //increment number of times blocked
+            Increment_num_block();
+            //Update last time blocked
+            epoch_old = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             IntPtr ppSessionInfo = IntPtr.Zero;
             Int32 count = 0;
@@ -296,7 +293,8 @@ namespace USBBlocker
             }
             WTSFreeMemory(ppSessionInfo);
         }
-        private void initialize_file(string path)
+
+        private void Initialize_File(string path)
         {
             try
             {
@@ -310,6 +308,32 @@ namespace USBBlocker
             catch (Exception e)
             {
                 this.EventLog.WriteEntry(String.Concat("The file cannot be generated", path, " because ", e.ToString()), EventLogEntryType.Information);
+            }
+        }
+
+        //increment the Number_blocks variable and save it
+        private void Increment_num_block()
+        {
+            string[] lines = File.ReadAllLines(path);
+            List<string> lines_list = new List<string>(lines);
+            string full_string = lines_list.First(s => s.Contains("Number_blocks"));
+            int n_blocks_i = lines_list.IndexOf(full_string);
+            if (n_blocks_i >= 0)
+            {
+                long epoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                char[] delChar = { '=' };
+                int n_blocks = int.Parse(lines_list[n_blocks_i].Split(delChar)[1]);
+
+                //to detect false positives because it receives more events than plugged in devices
+                //difference between an event and another has to be 2sec min to increment Number_blocks
+                long secs_diff = epoch - epoch_old;
+                this.EventLog.WriteEntry(String.Concat("[USBBlocker] Incrementing Number_blocks to ", n_blocks+1), EventLogEntryType.Warning);
+
+                if (secs_diff > min_secs)
+                {
+                    lines_list[n_blocks_i] = string.Format("Number_blocks={0}", n_blocks + 1);
+                    File.WriteAllLines(path, lines_list);
+                }
             }
         }
     }
