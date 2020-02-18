@@ -15,7 +15,7 @@ Train mode is enabled by default once installed, it allows any USB to be attache
 ## Installation
 
 Once compiled the solution, to install the service execute the following command.
-`` C:\Windows\Microsoft.NET\Framework\v4.0.30319\InstallUtil.exe -u <Path to compiled exe> ``
+`` C:\Windows\Microsoft.NET\Framework\v4.0.30319\InstallUtil.exe <Path to compiled exe> `` (to uninstall just add the -u flag)
 Then just start the service manually
 `` net start USBBlock ``
 To set it to start automatically on startup, open the 'Services' application and set it to launch as automatic.
