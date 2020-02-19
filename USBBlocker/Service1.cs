@@ -22,6 +22,7 @@ namespace USBBlocker
         EventLog eventos = new EventLog();
         Boolean TrainMode = true;
         Boolean Block = true;
+        Boolean reset;
         long epoch_old;
 
         //Configurable variables
@@ -135,14 +136,7 @@ namespace USBBlocker
             // Get time when new USB is plugged in
             ManagementBaseObject instance = (ManagementBaseObject)e.NewEvent;
             this.EventLog.WriteEntry(String.Concat("[USBBlocker] New USB device has been detected: TIME_CREATED= ", instance.GetPropertyValue("TIME_CREATED")), EventLogEntryType.Information);
-            /*
-            String props = "";
-            foreach (var property in instance.Properties)
-            {
-                props = String.Concat(props, property.Name, " = ", property.Value, " ;");
-            }
-            this.EventLog.WriteEntry(String.Concat("[USBBlocker] New USB device has been detected: ", props),EventLogEntryType.Information);
-            */
+            reset = true;
 
             List<string> devices_plugged = new List<string>();
             try
@@ -154,6 +148,11 @@ namespace USBBlocker
             } catch (Exception) { }
         
             Check_devices(devices_plugged);
+            //Reset the counter Number_blocks if no new device has been plugged in
+            if (reset)
+            {
+                Reset_num_block();
+            }
         }
 
         private List<string> list_properties(String query, String device)
@@ -178,29 +177,32 @@ namespace USBBlocker
             foreach (string devID in devices_ID)
             {
                 // BashBunny found
-                if (devID.Contains("F000"))
+                if (Block)
                 {
-                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] System blocked, cause: BashBunny. Found device ID: ", devID), EventLogEntryType.Warning);
-                    BlockComputer();
-                }
-
-                //Parses the Whitelist. Also dont block if maximun_blocks exceeded
-                else if (!Recognised_devices.Contains(devID) && Block)
-                {
-                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] unrecognized devide detected: ", devID), EventLogEntryType.Information);
-                    if (TrainMode)
+                    if (devID.Contains("F000"))
                     {
-                        this.EventLog.WriteEntry(String.Concat("[USBBlocker] A new device signature has been added: ", devID), EventLogEntryType.Warning);
-                        // true as secon arg enables concat instead of overwrite.
-                        using (StreamWriter sw = new StreamWriter(path, true))
-                        {
-                            sw.WriteLine(devID);
-                        }
-                    }
-                    else
-                    {
-                        this.EventLog.WriteEntry(String.Concat("[USBBlocker]  Blocking ... a new USB device has been plugged in ", devID), EventLogEntryType.Warning);
+                        this.EventLog.WriteEntry(String.Concat("[USBBlocker] System blocked, cause: BashBunny. Found device ID: ", devID), EventLogEntryType.Warning);
                         BlockComputer();
+                    }
+
+                    //Parses the Whitelist. Also dont block if maximun_blocks exceeded
+                    else if (!Recognised_devices.Contains(devID))
+                    {
+                        this.EventLog.WriteEntry(String.Concat("[USBBlocker] unrecognized devide detected: ", devID), EventLogEntryType.Information);
+                        if (TrainMode)
+                        {
+                            this.EventLog.WriteEntry(String.Concat("[USBBlocker] A new device signature has been added: ", devID), EventLogEntryType.Warning);
+                            // true as secon arg enables concat instead of overwrite.
+                            using (StreamWriter sw = new StreamWriter(path, true))
+                            {
+                                sw.WriteLine(devID);
+                            }
+                        }
+                        else
+                        {
+                            this.EventLog.WriteEntry(String.Concat("[USBBlocker]  Blocking ... a new USB device has been plugged in ", devID), EventLogEntryType.Warning);
+                            BlockComputer();
+                        }
                     }
                 }
             }
@@ -264,6 +266,7 @@ namespace USBBlocker
                 if (n_blocks >= maxBlocks)
                 {
                     Block = false; //don't block the computer
+                    reset = false;
                     this.EventLog.WriteEntry("[USBBlocker] Not blocking because maximun_block number exceeded", EventLogEntryType.Information);
                 }
             }
@@ -276,6 +279,8 @@ namespace USBBlocker
             Increment_num_block();
             //Update last time blocked
             epoch_old = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            //dont reset the blocking counter
+            reset = false;
 
             IntPtr ppSessionInfo = IntPtr.Zero;
             Int32 count = 0;
@@ -311,7 +316,7 @@ namespace USBBlocker
             }
         }
 
-        //increment the Number_blocks variable and save it
+        //increment the Number_blocks variable and save it. If reset is true, the counter is set to 0.
         private void Increment_num_block()
         {
             string[] lines = File.ReadAllLines(path);
@@ -327,13 +332,27 @@ namespace USBBlocker
                 //to detect false positives because it receives more events than plugged in devices
                 //difference between an event and another has to be 2sec min to increment Number_blocks
                 long secs_diff = epoch - epoch_old;
-                this.EventLog.WriteEntry(String.Concat("[USBBlocker] Incrementing Number_blocks to ", n_blocks+1), EventLogEntryType.Warning);
 
                 if (secs_diff > min_secs)
                 {
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] Incrementing Number_blocks to ", n_blocks + 1), EventLogEntryType.Warning);
                     lines_list[n_blocks_i] = string.Format("Number_blocks={0}", n_blocks + 1);
                     File.WriteAllLines(path, lines_list);
                 }
+            }
+        }
+
+        private void Reset_num_block()
+        {
+            string[] lines = File.ReadAllLines(path);
+            List<string> lines_list = new List<string>(lines);
+            string full_string = lines_list.First(s => s.Contains("Number_blocks"));
+            int n_blocks_i = lines_list.IndexOf(full_string);
+            if (n_blocks_i >= 0)
+            {
+                this.EventLog.WriteEntry(String.Concat("[USBBlocker] Reset number_blocks"), EventLogEntryType.Error);
+                lines_list[n_blocks_i] = "Number_blocks=0";
+                File.WriteAllLines(path, lines_list);
             }
         }
     }
