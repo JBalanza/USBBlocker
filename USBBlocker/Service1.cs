@@ -269,6 +269,7 @@ namespace USBBlocker
             return Block;
         }
 
+        // Ref: https://stackoverflow.com/a/40964859
         private void BlockComputer()
         {
             //increment number of times blocked
@@ -368,5 +369,6 @@ namespace USBBlocker
                 }
             }
         }
+
     }
 }
