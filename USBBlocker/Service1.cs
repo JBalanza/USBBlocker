@@ -32,6 +32,7 @@ namespace USBBlocker
         string logname = "Application";
         int maxBlocks = 3;
         int min_secs = 2;
+        static int restart_time_seconds = 60;
 
         public Service1()
         {
@@ -129,6 +130,7 @@ namespace USBBlocker
 
         private void Monitorize(object sender, EventArrivedEventArgs e)
         {
+            
             // Get time when new USB is plugged in
             ManagementBaseObject instance = (ManagementBaseObject)e.NewEvent;
             this.EventLog.WriteEntry(String.Concat("[USBBlocker] New USB device has been detected: TIME_CREATED= ", instance.GetPropertyValue("TIME_CREATED")), EventLogEntryType.Information);
@@ -141,8 +143,9 @@ namespace USBBlocker
                 devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM CIM_USBDevice", "CIM_USBDevice")).ToList();
                 devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM Win32_USBHub", "Win32_USBHub")).ToList();
                 devices_plugged = devices_plugged.Union(list_properties("SELECT * FROM Win32_MemoryDevice", "Win32_MemoryDevice")).ToList();
-            } catch (Exception) { }
-        
+            }
+            catch (Exception) { }
+
             Check_devices(devices_plugged);
             //Reset the counter Number_blocks if no new device has been plugged in
             if (reset)
@@ -172,9 +175,10 @@ namespace USBBlocker
             string[] Recognised_devices = Accepted_Devices();
             foreach (string devID in devices_ID)
             {
-                // BashBunny found
-                if (Block)
+                if (Block && Seconds_upTime() > restart_time_seconds)
                 {
+                    // BashBunny found
+                    // Ref: https://wiki.bashbunny.com/#!payload_development.md
                     if (devID.Contains("F000"))
                     {
                         this.EventLog.WriteEntry(String.Concat("[USBBlocker] System blocked, cause: BashBunny. Found device ID: ", devID), EventLogEntryType.Warning);
@@ -207,7 +211,7 @@ namespace USBBlocker
         //Devices can be added manually under "path" var file
         private string[] Accepted_Devices()
         {
-            //my default recognized ones. "@" before string is for non escape the backslash. You should subssitute yours instead
+            //my default recognized ones. "@" before string is for non escape the backslash. You should subsitute yours instead
             List<string> Recognised_devices_list = new List<string>(Recognised_devices_main);
 
             List<string> lines_list = new List<string>();
@@ -370,5 +374,10 @@ namespace USBBlocker
             }
         }
 
+        // Ref: https://stackoverflow.com/a/972189
+        public int Seconds_upTime()
+        {
+            return System.Environment.TickCount / 1000;
+        }
     }
 }
