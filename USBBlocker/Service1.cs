@@ -29,7 +29,7 @@ namespace USBBlocker
         string[] Recognised_devices_main = { @"USB\VID_10D5&PID_000D&MI_00\7&2F53004F&0&0000", @"ACPI\LEN0071\4&39D7568D&0", @"USB\VID_17EF&PID_608C&MI_00\7&8AE0656&0&0000", @"USB\ROOT_HUB30\4&318E91B5&1&0", @"USB\VID_04CA&PID_7058\5&2AFD7BB9&0&8", @"USB\VID_2109&PID_2811\5&2AFD7BB9&0&4", @"USB\VID_10D5&PID_000D\6&82E9074&0&3", @"USB\VID_05E3&PID_0608\5&2AFD7BB9&0&3", @"USB\VID_2109&PID_8110\5&2AFD7BB9&0&16", @"USB\VID_17EF&PID_608C\6&82E9074&0&1" };
         //string[] Recognised_devices_main = { };
         string path = @"C:\ProgramData\USBSignatures.txt"; //default
-        string logname = "Aplicación";
+        string logname = "Application";
         int maxBlocks = 3;
         int min_secs = 2;
 
@@ -52,15 +52,11 @@ namespace USBBlocker
             epoch_old = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             //Creates the eventslog
-            //Change to 'Application' if the OS language is EN. 
             if (!EventLog.SourceExists(logname))
             {
                 eventos.Log = logname; 
             }
-            else
-            {
-                eventos.Log = "Application";
-            }
+
             ((ISupportInitialize)(this.EventLog)).BeginInit();
             if (!EventLog.SourceExists(this.EventLog.Source))
             {
