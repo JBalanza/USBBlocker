@@ -26,8 +26,8 @@ namespace USBBlocker
         long epoch_old;
 
         //Configurable variables
-        //string[] Recognised_devices_main = { @"USB\VID_10D5&PID_000D&MI_00\7&2F53004F&0&0000", @"ACPI\LEN0071\4&39D7568D&0", @"USB\VID_17EF&PID_608C&MI_00\7&8AE0656&0&0000", @"USB\ROOT_HUB30\4&318E91B5&1&0", @"USB\VID_04CA&PID_7058\5&2AFD7BB9&0&8", @"USB\VID_2109&PID_2811\5&2AFD7BB9&0&4", @"USB\VID_10D5&PID_000D\6&82E9074&0&3", @"USB\VID_05E3&PID_0608\5&2AFD7BB9&0&3", @"USB\VID_2109&PID_8110\5&2AFD7BB9&0&16", @"USB\VID_17EF&PID_608C\6&82E9074&0&1" };
-        string[] Recognised_devices_main = { };
+        string[] Recognised_devices_main = { @"USB\VID_10D5&PID_000D&MI_00\7&2F53004F&0&0000", @"ACPI\LEN0071\4&39D7568D&0", @"USB\VID_17EF&PID_608C&MI_00\7&8AE0656&0&0000", @"USB\ROOT_HUB30\4&318E91B5&1&0", @"USB\VID_04CA&PID_7058\5&2AFD7BB9&0&8", @"USB\VID_2109&PID_2811\5&2AFD7BB9&0&4", @"USB\VID_10D5&PID_000D\6&82E9074&0&3", @"USB\VID_05E3&PID_0608\5&2AFD7BB9&0&3", @"USB\VID_2109&PID_8110\5&2AFD7BB9&0&16", @"USB\VID_17EF&PID_608C\6&82E9074&0&1" };
+        //string[] Recognised_devices_main = { };
         string path = @"C:\ProgramData\USBSignatures.txt"; //default
         string logname = "Aplicación";
         int maxBlocks = 3;
@@ -308,11 +308,12 @@ namespace USBBlocker
                     sw.WriteLine("Train_mode=True");
                     sw.WriteLine("Number_blocks=0");
                 }
-                this.EventLog.WriteEntry(String.Concat("The file has been generated ", path), EventLogEntryType.Information);
+                this.EventLog.WriteEntry(String.Concat("[USBBlocker] The file has been generated ", path), EventLogEntryType.Information);
             }
             catch (Exception e)
             {
-                this.EventLog.WriteEntry(String.Concat("The file cannot be generated", path, " because ", e.ToString()), EventLogEntryType.Information);
+                this.EventLog.WriteEntry(String.Concat("[USBBlocker] The file ", path, " cannot be updated because ", e.ToString(), ". exiting..."), EventLogEntryType.Error);
+                Environment.Exit(1);
             }
         }
 
@@ -335,9 +336,17 @@ namespace USBBlocker
 
                 if (secs_diff > min_secs)
                 {
-                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] Incrementing Number_blocks to ", n_blocks + 1), EventLogEntryType.Warning);
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] Incrementing Number_blocks to ", n_blocks + 1), EventLogEntryType.Information);
                     lines_list[n_blocks_i] = string.Format("Number_blocks={0}", n_blocks + 1);
-                    File.WriteAllLines(path, lines_list);
+                    try
+                    {
+                        File.WriteAllLines(path, lines_list);
+                    }
+                    catch (Exception e)
+                    {
+                        this.EventLog.WriteEntry(String.Concat("[USBBlocker] The file ",path," cannot be updated because ", e.ToString(), ". exiting..."), EventLogEntryType.Error);
+                        Environment.Exit(1);
+                    }
                 }
             }
         }
@@ -350,9 +359,17 @@ namespace USBBlocker
             int n_blocks_i = lines_list.IndexOf(full_string);
             if (n_blocks_i >= 0)
             {
-                this.EventLog.WriteEntry(String.Concat("[USBBlocker] Reset number_blocks"), EventLogEntryType.Error);
+                this.EventLog.WriteEntry(String.Concat("[USBBlocker] Reset number_blocks"), EventLogEntryType.Information);
                 lines_list[n_blocks_i] = "Number_blocks=0";
-                File.WriteAllLines(path, lines_list);
+                try
+                {
+                    File.WriteAllLines(path, lines_list);
+                }
+                catch (Exception e)
+                {
+                    this.EventLog.WriteEntry(String.Concat("[USBBlocker] The file ", path, " cannot be updated because ", e.ToString(), ". exiting..."), EventLogEntryType.Error);
+                    Environment.Exit(1);
+                }
             }
         }
     }
